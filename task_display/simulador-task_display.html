@@ -1,0 +1,505 @@
+<title>Simulador task_display</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&family=VT323&display=swap">
+<style>
+/* Layout: banco de pruebas — fila superior con el LCD físico, debajo el statechart y el registro tick a tick */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --line: #cfd6de;
+  --fg: #1b2430;
+  --muted: #5d6b7b;
+  --accent: #2f5da8;
+  --accent-soft: #dfe8f7;
+  --warn: #b5481f;
+  --warn-soft: #f7e3da;
+  --ok: #2d7a4b;
+  --lcd-bezel: #1c2a12;
+  --lcd-bg: #9dbf3a;
+  --lcd-cell: #93b532;
+  --lcd-ink: #1f2a10;
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --font-lcd: "VT323", "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12171d; --surface: #1a2129; --line: #2e3945; --fg: #e3e9ef; --muted: #93a1b0;
+    --accent: #7fa6e8; --accent-soft: #22324a; --warn: #f0905f; --warn-soft: #3d261b; --ok: #6fc490;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12171d; --surface: #1a2129; --line: #2e3945; --fg: #e3e9ef; --muted: #93a1b0;
+  --accent: #7fa6e8; --accent-soft: #22324a; --warn: #f0905f; --warn-soft: #3d261b; --ok: #6fc490;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 14px; line-height: 1.45; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 40px; display: grid; gap: 16px; }
+header h1 { font-size: 1.45rem; margin: 0; font-weight: 600; text-wrap: balance; }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
+code, .mono { font-family: var(--font-data); font-size: 0.92em; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; min-width: 0; }
+.panel h2 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+.grid-top { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; }
+.grid-mid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 860px) { .grid-top, .grid-mid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Controls */
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button { font-family: var(--font-ui); font-size: 0.9rem; border: 1px solid var(--line); background: var(--surface); color: var(--fg); padding: 7px 12px; border-radius: 6px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); font-weight: 600; }
+.speed { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 0.85rem; }
+.sep { width: 1px; align-self: stretch; background: var(--line); }
+label.chk { display: flex; gap: 6px; align-items: center; font-size: 0.85rem; color: var(--muted); }
+
+/* LCD */
+.lcd-bezel { background: var(--lcd-bezel); border-radius: 10px; padding: 14px; display: grid; gap: 6px; overflow-x: auto; }
+.lcd-row { display: grid; grid-template-columns: repeat(16, minmax(18px, 1fr)); gap: 3px; background: var(--lcd-bg); padding: 4px; min-width: 330px; }
+.lcd-row + .lcd-row { margin-top: -6px; padding-top: 0; }
+.lcd-cell { background: var(--lcd-cell); color: var(--lcd-ink); font-family: var(--font-lcd); font-size: 1.75rem; line-height: 1; text-align: center; padding: 3px 0 1px; position: relative; }
+.lcd-cell.cursor::after { content: ""; position: absolute; left: 2px; right: 2px; bottom: 1px; height: 2px; background: var(--lcd-ink); animation: blink 0.9s steps(1) infinite; }
+.lcd-cell.just { background: #b4d24e; }
+@keyframes blink { 50% { opacity: 0; } }
+.addr { display: flex; justify-content: space-between; font-family: var(--font-data); font-size: 0.72rem; color: #c9d8a4; min-width: 330px; }
+.hidden-strip { margin-top: 10px; }
+.hidden-strip .lbl { font-size: 0.78rem; color: var(--muted); margin-bottom: 4px; }
+.hstrip { display: grid; grid-template-columns: repeat(24, minmax(12px, 1fr)); gap: 2px; overflow-x: auto; }
+.hcell { font-family: var(--font-data); font-size: 0.75rem; text-align: center; border: 1px dashed var(--line); color: var(--muted); padding: 2px 0; min-width: 12px; }
+.hcell.filled { border-style: solid; border-color: var(--warn); color: var(--warn); background: var(--warn-soft); font-weight: 600; }
+
+/* ddram */
+.ddram { display: grid; gap: 4px; overflow-x: auto; }
+.drow { display: grid; grid-template-columns: 52px repeat(17, minmax(20px, 1fr)); gap: 2px; min-width: 470px; }
+.dh { font-family: var(--font-data); font-size: 0.7rem; color: var(--muted); text-align: center; }
+.dcell { font-family: var(--font-data); text-align: center; border: 1px solid var(--line); border-radius: 3px; padding: 3px 0; font-size: 0.85rem; }
+.dcell.nul { color: var(--muted); opacity: 0.6; }
+.dcell.term { background: var(--bg); }
+.dcell.ptr { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.dlabel { font-family: var(--font-data); font-size: 0.78rem; color: var(--muted); align-self: center; }
+
+/* variables */
+.vars { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.var { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.var .k { font-size: 0.72rem; color: var(--muted); font-family: var(--font-data); }
+.var .v { font-family: var(--font-data); font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.var.changed { border-color: var(--accent); background: var(--accent-soft); }
+.flag-on { color: var(--ok); }
+.flag-off { color: var(--muted); }
+
+/* diagram */
+.diagram-wrap { overflow-x: auto; }
+svg.sc { width: 100%; min-width: 520px; height: auto; display: block; }
+svg.sc .node rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+svg.sc .node text { fill: var(--fg); font-family: var(--font-data); font-size: 13px; font-weight: 600; }
+svg.sc .node .sub { fill: var(--muted); font-size: 10.5px; font-weight: 400; }
+svg.sc .node.active rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2.5; }
+svg.sc .edge path { fill: none; stroke: var(--muted); stroke-width: 1.4; }
+svg.sc .edge text { fill: var(--muted); font-family: var(--font-data); font-size: 10.5px; }
+svg.sc .edge .num { fill: var(--surface); stroke: var(--muted); }
+svg.sc .edge .numt { fill: var(--muted); font-size: 10px; font-weight: 600; }
+svg.sc .edge.fired path { stroke: var(--accent); stroke-width: 2.6; }
+svg.sc .edge.fired text { fill: var(--accent); font-weight: 600; }
+svg.sc .edge.fired .num { stroke: var(--accent); }
+svg.sc .edge.bug path { stroke: var(--warn); stroke-dasharray: 5 4; }
+svg.sc .edge.bug text { fill: var(--warn); }
+svg.sc marker path { fill: var(--muted); }
+svg.sc marker.on path { fill: var(--accent); }
+svg.sc marker.bugm path { fill: var(--warn); }
+
+/* explanation line */
+.now { border-left: 3px solid var(--accent); padding: 8px 12px; background: var(--accent-soft); border-radius: 0 6px 6px 0; }
+.now strong { font-family: var(--font-data); }
+.now.warnbox { border-left-color: var(--warn); background: var(--warn-soft); }
+
+/* cost meter */
+.meter { height: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; position: relative; }
+.meter > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width 0.15s; }
+.meter-legend { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--muted); font-family: var(--font-data); margin-top: 3px; }
+
+/* put_event form */
+.form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.form label { display: grid; gap: 2px; font-size: 0.75rem; color: var(--muted); }
+.form input { font-family: var(--font-data); font-size: 0.9rem; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg); }
+.form input.n { width: 64px; }
+.form input.t { width: 200px; max-width: 100%; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.presets button { font-size: 0.82rem; padding: 5px 9px; }
+.hint { font-size: 0.8rem; color: var(--muted); margin: 8px 0 0; }
+
+/* log */
+.log-wrap { max-height: 320px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 0.82rem; min-width: 720px; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { position: sticky; top: 0; background: var(--surface); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+td { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+tr.last td { background: var(--accent-soft); }
+tr.ext td { background: var(--warn-soft); }
+td.num { text-align: right; }
+@media (prefers-reduced-motion: reduce) { .lcd-cell.cursor::after { animation: none; } .meter > i { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Simulador task_display</h1>
+    <p>Statechart no bloqueante del display (TP3 – Actividad 02): 1 instrucción o 1 dato por tick de 1 ms. Ejecutá tick a tick y mirá qué estado está activo, qué transición se dispara y qué recibe el LCD.</p>
+  </header>
+
+  <section class="panel">
+    <div class="controls">
+      <button id="btnStep" class="primary" type="button">Paso (1 tick)</button>
+      <button id="btnPlay" type="button">▶ Reproducir</button>
+      <button id="btnIdle" type="button">Correr hasta IDLE</button>
+      <button id="btnReset" type="button">Reiniciar</button>
+      <span class="sep" aria-hidden="true"></span>
+      <label class="speed" for="speed">Velocidad <input id="speed" type="range" min="1" max="40" value="6"> <span id="speedVal" class="mono">6 ticks/s</span></label>
+      <span class="sep" aria-hidden="true"></span>
+      <label class="chk" for="bug"><input id="bug" type="checkbox"> Probar el error: transición 2 → WRITE_CHAR (sin reposicionar)</label>
+    </div>
+  </section>
+
+  <div id="now" class="now"></div>
+
+  <div class="grid-top">
+    <section class="panel">
+      <h2>LCD 16×2 (HD44780)</h2>
+      <div class="lcd-bezel">
+        <div class="addr"><span>0x00</span><span>fila 0</span><span>0x0F</span></div>
+        <div class="lcd-row" id="lcd0"></div>
+        <div class="lcd-row" id="lcd1"></div>
+        <div class="addr"><span>0x40</span><span>fila 1</span><span>0x4F</span></div>
+      </div>
+      <div class="hidden-strip">
+        <div class="lbl">DDRAM fuera de pantalla, continuación de la fila 0 (0x10–0x27). Solo se escribe acá si falta el reposicionamiento.</div>
+        <div class="hstrip" id="hstrip"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Variables</h2>
+      <div class="vars" id="vars"></div>
+      <div style="margin-top:12px">
+        <h2>Costo de este tick vs. período del SysTick</h2>
+        <div class="meter"><i id="meterBar"></i></div>
+        <div class="meter-legend"><span id="meterVal">0 µs</span><span>WCET simulado: <b id="wcet">0 µs</b></span><span>1000 µs</span></div>
+        <p class="hint">Valores aproximados medidos en la Actividad 01: posicionar ≈ 185 µs, escribir un carácter ≈ 148 µs, tick en IDLE ≈ 2 µs. La versión bloqueante hacía las 34 operaciones en un solo tick: 6206 µs.</p>
+      </div>
+    </section>
+  </div>
+
+  <div class="grid-mid">
+    <section class="panel">
+      <h2>Statechart</h2>
+      <div class="diagram-wrap">
+        <svg class="sc" viewBox="0 0 600 330" role="img" aria-label="Statechart de task_display con tres estados">
+          <defs>
+            <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="arrOn" class="on" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="arrBug" class="bugm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+
+          <!-- edges -->
+          <g class="edge" id="e-idle">
+            <path d="M40,188 C10,232 92,236 72,190" marker-end="url(#arr)"/>
+            <text x="14" y="252">[sin flag]</text>
+          </g>
+          <g class="edge" id="e-T0">
+            <path d="M160,152 L248,76" marker-end="url(#arr)"/>
+            <text x="172" y="86" text-anchor="end">[UPDATE ∧ flag]</text>
+            <text x="172" y="100" text-anchor="end">/ flag=0, row=0, col=0</text>
+          </g>
+          <g class="edge" id="e-T1">
+            <path d="M310,84 L310,245" marker-end="url(#arr)"/>
+            <text x="300" y="158" text-anchor="end">/ cursor (0, row)</text>
+            <text x="300" y="172" text-anchor="end">1 instrucción</text>
+          </g>
+          <g class="edge" id="e-T3">
+            <path d="M352,247 L352,86" marker-end="url(#arr)"/>
+            <circle class="num" cx="352" cy="205" r="8"/><text class="numt" x="352" y="208.5" text-anchor="middle">2</text>
+            <text x="362" y="150">[col=15 ∧ row&lt;1]</text>
+            <text x="362" y="164">/ dato, col=0, row++</text>
+          </g>
+          <g class="edge" id="e-T2">
+            <path d="M410,258 C478,228 478,312 410,284" marker-end="url(#arr)"/>
+            <circle class="num" cx="461" cy="271" r="8"/><text class="numt" x="461" y="274.5" text-anchor="middle">1</text>
+            <text x="478" y="262">[col&lt;15]</text>
+            <text x="478" y="276">/ dato, col++</text>
+          </g>
+          <g class="edge" id="e-T4">
+            <path d="M250,280 L120,190" marker-end="url(#arr)"/>
+            <circle class="num" cx="185" cy="235" r="8"/><text class="numt" x="185" y="238.5" text-anchor="middle">3</text>
+            <text x="14" y="300">[col=15 ∧ row=1]</text>
+            <text x="14" y="314">/ dato</text>
+          </g>
+          <g class="edge bug" id="e-bug" style="display:none">
+            <path d="M410,292 C470,330 520,250 412,268" marker-end="url(#arrBug)"/>
+            <text x="440" y="322">error: [col=15 ∧ row&lt;1] → WRITE_CHAR</text>
+          </g>
+
+          <!-- nodes -->
+          <g class="node" id="n-IDLE">
+            <rect x="20" y="142" width="140" height="46" rx="8"/>
+            <text x="90" y="162" text-anchor="middle">ST_DSP_IDLE</text>
+            <text class="sub" x="90" y="178" text-anchor="middle">espera texto nuevo</text>
+          </g>
+          <g class="node" id="n-SET">
+            <rect x="240" y="38" width="180" height="46" rx="8"/>
+            <text x="330" y="58" text-anchor="middle">ST_DSP_SET_CURSOR</text>
+            <text class="sub" x="330" y="74" text-anchor="middle">1 instrucción</text>
+          </g>
+          <g class="node" id="n-WRITE">
+            <rect x="240" y="247" width="170" height="46" rx="8"/>
+            <text x="325" y="267" text-anchor="middle">ST_DSP_WRITE_CHAR</text>
+            <text class="sub" x="325" y="283" text-anchor="middle">1 dato</text>
+          </g>
+        </svg>
+      </div>
+      <p class="hint">Los números 1–3 son las tres transiciones de WRITE_CHAR del borrador. Cada combinación de (col, row) cumple exactamente una guarda.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Buffer ddram[2][17]</h2>
+      <div class="ddram" id="ddram"></div>
+      <p class="hint">∅ = <code>'\0'</code>. La columna 16 es el terminador de cada fila. El recuadro resaltado es <code>ddram[row][column]</code>, el próximo carácter que va a leer la tarea.</p>
+
+      <h2 style="margin-top:14px">put_event_task_display(col, fila, texto)</h2>
+      <form class="form" id="putForm">
+        <label for="pcol">col<input class="n" id="pcol" type="number" min="0" max="15" value="10"></label>
+        <label for="prow">fila<input class="n" id="prow" type="number" min="0" max="1" value="1"></label>
+        <label for="ptxt">texto<input class="t" id="ptxt" type="text" maxlength="16" value="12345"></label>
+        <button type="submit">Enviar</button>
+      </form>
+      <div class="presets">
+        <button type="button" data-preset="init">Mensaje inicial (2 filas)</button>
+        <button type="button" data-preset="test">Test Nro: 7</button>
+        <button type="button" data-preset="b">Mensaje B en fila 0</button>
+        <button type="button" data-preset="clear">Vaciar ddram</button>
+      </div>
+      <p class="hint">Para ver el caso del mensaje que llega a mitad de escritura: reproducí y, mientras escribe la fila 1, tocá "Mensaje B en fila 0". El <code>flag</code> vuelve a subir y, al llegar a IDLE, la tarea hace una segunda pasada.</p>
+    </section>
+  </div>
+
+  <section class="panel">
+    <h2>Registro tick a tick</h2>
+    <div class="log-wrap" id="logWrap">
+      <table>
+        <thead><tr><th>Tick</th><th>Estado</th><th>Guarda que se cumplió</th><th>Acciones</th><th>LCD recibe</th><th>row</th><th>col</th><th>flag</th><th>Costo</th></tr></thead>
+        <tbody id="log"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  const ROWS = 2, COLUMNS = 16;
+  const COST = { IDLE: 2, SET: 185, WRITE: 148 };
+  const NAME = { IDLE: "ST_DSP_IDLE", SET: "ST_DSP_SET_CURSOR", WRITE: "ST_DSP_WRITE_CHAR" };
+  let S, timer = null, prevVars = {};
+
+  function blankDdram() { return [Array(COLUMNS + 1).fill("\0"), Array(COLUMNS + 1).fill("\0")]; }
+  function reset() {
+    S = { st: "IDLE", row: 0, col: 0, flag: false, ev: "EV_DSP_IDLE", ac: 0x00, tick: 0, wcet: 0,
+          ddram: blankDdram(), lcd: new Array(0x68).fill(" "), lastAddr: -1, lastCost: 0, fired: null, log: [], note: null };
+    putEvent(0, 0, "LCD Display Test", true);
+    putEvent(0, 1, " Porting C code ", true);
+    S.note = { cls: "", html: "Estado inicial de ejemplo: <code>task_test</code> ya dejó el mensaje inicial en <code>ddram</code> y levantó el <code>flag</code>. El LCD está recién inicializado (en blanco). Tocá <strong>Paso</strong>." };
+    prevVars = {};
+    render();
+  }
+
+  function putEvent(col, row, msg, silent) {
+    S.ev = "EV_DSP_UPDATE";
+    S.flag = true;
+    let i = 0;
+    while (row < ROWS && col < COLUMNS) {
+      if (i >= msg.length) break;
+      S.ddram[row][col++] = msg[i++];
+    }
+    if (!silent) {
+      S.log.push({ ext: true, text: "put_event_task_display(" + arguments[0] + ", " + row + ", \"" + msg + "\") → ddram actualizado, flag = true" });
+      S.note = { cls: "", html: "Entró un mensaje: se copió a <code>ddram</code> y <code>flag = true</code>. Si la tarea está escribiendo, sigue; los caracteres que todavía no mandó salen del contenido nuevo." };
+    }
+  }
+
+  function advanceAC(a) { a++; if (a === 0x28) a = 0x40; if (a === 0x68) a = 0x00; return a; }
+  const hex = n => "0x" + n.toString(16).toUpperCase().padStart(2, "0");
+  const show = ch => ch === " " ? "␣" : ch;
+
+  function step() {
+    const bug = document.getElementById("bug").checked;
+    S.tick++;
+    const r = { tick: S.tick, st: NAME[S.st], guard: "", act: "", lcd: "—", cost: 0 };
+    S.lastAddr = -1;
+    if (S.st === "IDLE") {
+      if (S.ev === "EV_DSP_UPDATE" && S.flag) {
+        S.flag = false; S.row = 0; S.col = 0; S.st = "SET";
+        r.guard = "EV_DSP_UPDATE ∧ flag"; r.act = "flag=false, row=0, col=0 → SET_CURSOR"; S.fired = "e-T0";
+        S.note = { cls: "", html: "<strong>IDLE</strong> vio <code>flag = true</code>: toma el mensaje, baja el <code>flag</code>, pone <code>row = 0</code>, <code>column = 0</code> y pasa a <strong>SET_CURSOR</strong>. En este tick no se toca el LCD." };
+      } else {
+        r.guard = "(ninguna: sin flag)"; r.act = "—"; S.fired = "e-idle";
+        S.note = { cls: "", html: "<strong>IDLE</strong> sin mensajes pendientes: la tarea se ejecuta, no hace nada y devuelve el control (≈ 2 µs)." };
+      }
+      r.cost = COST.IDLE;
+    } else if (S.st === "SET") {
+      S.ac = S.row === 0 ? 0x00 : 0x40;
+      r.guard = "(sin guarda)"; r.act = "cursor (0, " + S.row + ") → WRITE_CHAR";
+      r.lcd = "instr. Set DDRAM Addr " + hex(S.ac);
+      S.st = "WRITE"; S.fired = "e-T1"; r.cost = COST.SET;
+      S.note = { cls: "", html: "<strong>SET_CURSOR</strong>: 1 instrucción. El cursor interno del LCD pasa a <strong>" + hex(S.ac) + "</strong>, inicio de la fila " + S.row + ". Próximo tick: <strong>WRITE_CHAR</strong>." };
+    } else {
+      const raw = S.ddram[S.row][S.col];
+      const ch = raw === "\0" ? " " : raw;
+      const addr = S.ac;
+      S.lcd[addr] = ch; S.lastAddr = addr; S.ac = advanceAC(S.ac);
+      r.lcd = "dato '" + show(ch) + "'" + (raw === "\0" ? " (era \\0)" : "") + " en " + hex(addr);
+      r.cost = COST.WRITE;
+      const visible = (addr <= 0x0F) || (addr >= 0x40 && addr <= 0x4F);
+      let txt = "<strong>WRITE_CHAR</strong>: manda <code>ddram[" + S.row + "][" + S.col + "]</code> = '" + show(ch) + "'" + (raw === "\0" ? " (era <code>\\0</code>, se manda espacio)" : "") + " a la dirección " + hex(addr) + (visible ? "" : " — <strong>fuera de pantalla</strong>") + ". El LCD avanza su cursor solo a " + hex(S.ac) + ". ";
+      if (S.col < COLUMNS - 1) {
+        r.guard = "col=" + S.col + " < 15"; r.act = "col++ (→ " + (S.col + 1) + ")";
+        S.col++; S.fired = "e-T2";
+        txt += "Guarda 1 (<code>col &lt; 15</code>): <code>column++</code>, sigue en WRITE_CHAR.";
+      } else if (S.row < ROWS - 1) {
+        r.guard = "col=15 ∧ row=" + S.row + " < 1"; r.act = "col=0, row++ → " + (bug ? "WRITE_CHAR (error)" : "SET_CURSOR");
+        S.col = 0; S.row++; S.st = bug ? "WRITE" : "SET"; S.fired = bug ? "e-bug" : "e-T3";
+        txt += bug
+          ? "Guarda 2 con el <strong>error</strong>: vuelve a WRITE_CHAR sin reposicionar. El próximo carácter va a " + hex(S.ac) + ", que no se ve."
+          : "Guarda 2 (fin de la fila 0): <code>column = 0</code>, <code>row++</code>, pasa a <strong>SET_CURSOR</strong> para saltar a 0x40.";
+      } else {
+        r.guard = "col=15 ∧ row=1"; r.act = "→ IDLE";
+        S.st = "IDLE"; S.fired = "e-T4";
+        txt += "Guarda 3 (fin de la última fila): vuelve a <strong>IDLE</strong>." + (S.flag ? " Hay <code>flag = true</code> pendiente: el próximo tick arranca otra pasada." : "");
+      }
+      if (!visible) S.note = { cls: "warnbox", html: txt }; else S.note = { cls: "", html: txt };
+    }
+    S.lastCost = r.cost; S.wcet = Math.max(S.wcet, r.cost);
+    r.row = S.row; r.col = S.col; r.flag = S.flag;
+    S.log.push(r);
+    if (S.log.length > 400) S.log.splice(0, S.log.length - 400);
+    render();
+  }
+
+  /* ---------- render ---------- */
+  function render() {
+    // LCD
+    [0, 1].forEach(row => {
+      const el = document.getElementById("lcd" + row);
+      const base = row === 0 ? 0x00 : 0x40;
+      let html = "";
+      for (let c = 0; c < 16; c++) {
+        const a = base + c;
+        const cls = ["lcd-cell"];
+        if (a === S.ac) cls.push("cursor");
+        if (a === S.lastAddr) cls.push("just");
+        html += '<div class="' + cls.join(" ") + '">' + esc(S.lcd[a]) + "</div>";
+      }
+      el.innerHTML = html;
+    });
+    let hs = "";
+    for (let a = 0x10; a <= 0x27; a++) {
+      const filled = S.lcd[a] !== " ";
+      hs += '<div class="hcell' + (filled ? " filled" : "") + '" title="' + hex(a) + '">' + (filled ? esc(S.lcd[a]) : "·") + "</div>";
+    }
+    document.getElementById("hstrip").innerHTML = hs;
+
+    // ddram
+    let d = '<div class="drow"><span></span>';
+    for (let c = 0; c <= COLUMNS; c++) d += '<span class="dh">' + c + "</span>";
+    d += "</div>";
+    for (let r = 0; r < ROWS; r++) {
+      d += '<div class="drow"><span class="dlabel">fila ' + r + "</span>";
+      for (let c = 0; c <= COLUMNS; c++) {
+        const ch = S.ddram[r][c];
+        const cls = ["dcell"];
+        if (ch === "\0") cls.push("nul");
+        if (c === COLUMNS) cls.push("term");
+        if ((S.st === "WRITE") && r === S.row && c === S.col) cls.push("ptr");
+        d += '<span class="' + cls.join(" ") + '">' + (ch === "\0" ? "∅" : esc(ch === " " ? "␣" : ch)) + "</span>";
+      }
+      d += "</div>";
+    }
+    document.getElementById("ddram").innerHTML = d;
+
+    // vars
+    const vars = { "tick": S.tick, "state": NAME[S.st], "event": S.ev, "flag": S.flag ? "true" : "false", "row": S.row, "column": S.col, "cursor LCD": hex(S.ac) };
+    let vh = "";
+    for (const k in vars) {
+      const changed = prevVars[k] !== undefined && prevVars[k] !== vars[k] && k !== "tick";
+      let v = esc(String(vars[k]));
+      if (k === "flag") v = '<span class="' + (S.flag ? "flag-on" : "flag-off") + '">' + v + "</span>";
+      vh += '<div class="var' + (changed ? " changed" : "") + '"><div class="k">' + k + '</div><div class="v">' + v + "</div></div>";
+    }
+    document.getElementById("vars").innerHTML = vh;
+    prevVars = vars;
+
+    // meter
+    document.getElementById("meterBar").style.width = Math.min(100, S.lastCost / 10) + "%";
+    document.getElementById("meterVal").textContent = "este tick: " + S.lastCost + " µs";
+    document.getElementById("wcet").textContent = S.wcet + " µs";
+
+    // diagram
+    ["IDLE", "SET", "WRITE"].forEach(n => document.getElementById("n-" + n).classList.toggle("active", S.st === n));
+    document.querySelectorAll("svg.sc .edge").forEach(e => {
+      const on = e.id === S.fired && S.tick > 0;
+      e.classList.toggle("fired", on);
+      const p = e.querySelector("path");
+      if (e.id === "e-bug") p.setAttribute("marker-end", "url(#arrBug)");
+      else p.setAttribute("marker-end", on ? "url(#arrOn)" : "url(#arr)");
+    });
+    document.getElementById("e-bug").style.display = document.getElementById("bug").checked ? "" : "none";
+
+    // note
+    const now = document.getElementById("now");
+    now.className = "now " + (S.note ? S.note.cls : "");
+    now.innerHTML = S.note ? S.note.html : "";
+
+    // log
+    const rows = S.log.map((r, i) => {
+      const last = i === S.log.length - 1 ? " last" : "";
+      if (r.ext) return '<tr class="ext' + last + '"><td colspan="9">' + esc(r.text) + "</td></tr>";
+      return '<tr class="' + last.trim() + '"><td class="num">' + r.tick + "</td><td>" + r.st + "</td><td>" + esc(r.guard) + "</td><td>" + esc(r.act) + "</td><td>" + esc(r.lcd) + '</td><td class="num">' + r.row + '</td><td class="num">' + r.col + "</td><td>" + (r.flag ? "true" : "false") + '</td><td class="num">' + r.cost + " µs</td></tr>";
+    }).join("");
+    document.getElementById("log").innerHTML = rows;
+    const lw = document.getElementById("logWrap");
+    lw.scrollTop = lw.scrollHeight;
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+  /* ---------- controls ---------- */
+  const btnPlay = document.getElementById("btnPlay");
+  const speed = document.getElementById("speed");
+  function stop() { if (timer) { clearInterval(timer); timer = null; } btnPlay.textContent = "▶ Reproducir"; }
+  function play() { stop(); timer = setInterval(step, 1000 / Number(speed.value)); btnPlay.textContent = "❚❚ Pausa"; }
+  btnPlay.addEventListener("click", () => timer ? stop() : play());
+  document.getElementById("btnStep").addEventListener("click", () => { stop(); step(); });
+  document.getElementById("btnReset").addEventListener("click", () => { stop(); reset(); });
+  document.getElementById("btnIdle").addEventListener("click", () => {
+    stop(); let n = 0;
+    do { step(); n++; } while (!(S.st === "IDLE" && !S.flag) && n < 200);
+  });
+  speed.addEventListener("input", () => { document.getElementById("speedVal").textContent = speed.value + " ticks/s"; if (timer) play(); });
+  document.getElementById("bug").addEventListener("change", render);
+  document.getElementById("putForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const c = Math.max(0, Math.min(15, parseInt(document.getElementById("pcol").value, 10) || 0));
+    const r = Math.max(0, Math.min(1, parseInt(document.getElementById("prow").value, 10) || 0));
+    putEvent(c, r, document.getElementById("ptxt").value);
+    render();
+  });
+  document.querySelectorAll("[data-preset]").forEach(b => b.addEventListener("click", () => {
+    const p = b.dataset.preset;
+    if (p === "init") { putEvent(0, 0, "LCD Display Test"); putEvent(0, 1, " Porting C code "); }
+    if (p === "test") { putEvent(0, 1, "Test Nro: ******"); putEvent(10, 1, "7"); }
+    if (p === "b") { putEvent(0, 0, "BBBBBBBBBBBBBBBB"); }
+    if (p === "clear") { S.ddram = blankDdram(); S.log.push({ ext: true, text: "ddram vaciado (todo \\0); flag sin cambios" }); S.note = { cls: "", html: "Buffer vaciado: todas las posiciones en <code>\\0</code>. Probá ahora <code>put_event(10, 1, \"12345\")</code> con el formulario." }; }
+    render();
+  }));
+
+  reset();
+})();
+</script>
