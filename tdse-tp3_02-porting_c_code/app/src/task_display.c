@@ -51,6 +51,7 @@
 #define DEL_DSP_MIN				0ul
 #define DEL_DSP_MED				50ul
 #define DEL_DSP_MAX				500ul
+#define DSP_BLANK_CHAR			' '
 
 /********************** internal data declaration ****************************/
 task_display_dta_t task_display_dta;
@@ -128,35 +129,38 @@ void task_display_statechart(void)
 	{
 		case ST_DSP_IDLE:
 
-			if ((true == p_task_display_dta->flag) && (EV_DSP_UPDATE == p_task_display_dta->event))
-			{
-				p_task_display_dta->state = ST_DSP_UPDATE;
-			}
-
-			break;
-
-		case ST_DSP_UPDATE:
-
-			if ((true == p_task_display_dta->flag) && (EV_DSP_UPDATE == p_task_display_dta->event))
+			if (true == p_task_display_dta->flag && EV_DSP_UPDATE == p_task_display_dta->event)
 			{
 				p_task_display_dta->flag = false;
-				p_task_display_dta->state = ST_DSP_UPDATE;
 				p_task_display_dta->row = 0;
 				p_task_display_dta->column = 0;
-
-				displayCharPositionWrite(0, 0);
-			    p_task_display_dta->row = 0;
-				displayStringWrite(p_task_display_dta->ddram[p_task_display_dta->row]);
-
-			    displayCharPositionWrite(0, 1);
-				p_task_display_dta->row = 1;
-				displayStringWrite(p_task_display_dta->ddram[p_task_display_dta->row]);
-
-				p_task_display_dta->state = ST_DSP_IDLE;
+				p_task_display_dta->state = ST_DSP_SET_CURSOR;
 			}
-
 			break;
 
+		case ST_DSP_SET_CURSOR:
+			
+			displayCharPositionWrite(0,p_task_display_dta->row);
+			p_task_display_dta->state = ST_DSP_WRITE_CHAR;
+			break;
+		
+		case ST_DSP_WRITE_CHAR:
+			if(p_task_display_dta->ddram[p_task_display_dta->row][p_task_display_dta->column] == '\0')
+				displayDataWrite(DSP_BLANK_CHAR);
+			else
+				displayDataWrite(p_task_display_dta->ddram[p_task_display_dta->row][p_task_display_dta->column]);
+			if(p_task_display_dta->column < COLUMNS - 1){
+				p_task_display_dta->column++;
+			}
+			else if(p_task_display_dta->column == COLUMNS - 1 && p_task_display_dta->row < ROWS - 1){
+				p_task_display_dta->column = 0;
+				p_task_display_dta->row++;
+				p_task_display_dta->state = ST_DSP_SET_CURSOR; 
+			}
+			else{
+				p_task_display_dta->state = ST_DSP_IDLE;
+			}
+			break;
 		default:
 
 			p_task_display_dta->tick  = DEL_DSP_MIN;

@@ -45,6 +45,7 @@ extern "C" {
 /********************** macros ***********************************************/
 
 /********************** typedef **********************************************/
+#define ESPACIO ' '
 /* Display Data RAM */
 #define ROWS 	2
 #define COLUMNS 16
@@ -55,7 +56,8 @@ typedef enum task_display_ev {EV_DSP_IDLE,
 
 /* State of Task Display */
 typedef enum task_display_st {ST_DSP_IDLE,
-							  ST_DSP_UPDATE} task_display_st_t;
+							  ST_DSP_SET_CURSOR,
+							  ST_DSP_WRITE_CHAR} task_display_st_t;
 
 typedef struct
 {
