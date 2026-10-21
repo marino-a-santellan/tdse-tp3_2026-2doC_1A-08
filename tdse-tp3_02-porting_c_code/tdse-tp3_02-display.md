@@ -2,7 +2,7 @@
 
 ##  Mediciones de Depuración: `task_dta_list[]`
 
-Los siguientes valores fueron obtenidos a través de la vista *Expressions* en el entorno de desarrollo tras varias ejecuciones de `app_update()`. Configuración del sistema: Build **Debug**, `SystemCoreClock` = 64 MHz.
+Los siguientes valores fueron obtenidos a través de la vista *Expressions* en el entorno de desarrollo tras varias ejecuciones de `app_update()`.
 
 | Campo | Descripción | `task_test` [0] | `task_display` [1] | Unidad |
 |---|---|---|---|---|
