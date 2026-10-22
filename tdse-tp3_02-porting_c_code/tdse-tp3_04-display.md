@@ -1,23 +1,33 @@
-# TP3 – Actividad 04 – LCD Display Statechart 
+TP3 – Actividad 04 – System Setup Menu Statechart (C coding)
 
-## Mediciones de Depuración: `task_dta_list[]`
+## Mediciones de Tareas: `task_dta_list[]`
 
-Los siguientes valores fueron obtenidos a través de la vista *Expressions* en el entorno de desarrollo tras varias ejecuciones de `app_update()`.
+Tras varias ejecuciones de la función `app_update()` interactuando con el menú de configuración de motores, se extrajeron los siguientes valores del depurador:
 
-| Campo | Descripción | `task_test` [0] | `task_display` [1] | Unidad |
-|---|---|---|---|---|
-| `NOE` | Number Of Executions | 150405 | 150405 | ejecuciones |
-| `LET` | Last Execution Time | 2 | 2 | µs |
-| `BCET` | Best-Case Execution Time | 2 | 2 | µs |
-| `WCET` | Worst-Case Execution Time | 37 | 255 | µs |
+**Unidad de medida temporal:** Microsegundos ($\mu s$). Según la arquitectura de este sistema "Bare Metal", los tiempos (LET, BCET, WCET) se miden en microsegundos calculados mediante el `cycle_counter`.
 
-### Análisis de Restricciones Temporales del Ejecutor Cíclico
+| Índice | NOE (Ejecuciones) | LET ($\mu s$) | BCET ($\mu s$) | WCET ($\mu s$) |
+| :---: | :--- | :--- | :--- | :--- |
+| `0` | 30175 | 43 | 43 | **45** |
+| `1` | 30175 | 5 | 3 | **166** |
+| `2` | 30175 | 2 | 2 | **4** |
+| `3` | 30175 | 2 | 2 | **78** |
 
-Para evaluar la viabilidad y estabilidad del sistema en tiempo real, se debe contrastar el tiempo de ejecución en el peor de los casos (Total WCET) contra la base de tiempo configurada en el planificador (SysTick).
+---
 
-1.  **Esquema de Ejecución:** El proyecto implementa una arquitectura basada en eventos (Event-Triggered System) y máquinas de estado no bloqueantes. La actualización de las tareas se rige por el patrón *Update by Time Code*, el cual define un período estricto de **1 milisegundo (1000 µs)**.
-2.  **Peor Escenario Posible (WCET):** Sumando el peor tiempo histórico de la tarea de pruebas (`task_test` con 37 µs) y el de la tarea del controlador del LCD (`task_display` con 255 µs), obtenemos un tiempo total máximo de ejecución (Total WCET) de **292 µs** por cada ciclo del super-loop.
-3.  **Cumplimiento de Restricciones:** El tiempo total exigido por las tareas (292 µs) representa únicamente un **29,2%** del período disponible de 1000 µs dictado por el SysTick.
+## Análisis de Restricciones Temporales (Ejecutor Cíclico)
 
-**Conclusión:** 
-El sistema **cumple de manera holgada con las restricciones temporales del ejecutor cíclico**. Existe un margen de inactividad de 708 µs por cada ciclo de reloj base, lo que confirma empíricamente que la codificación en C del *statechart* del display LCD es determinista, genuinamente no bloqueante y asegura que ninguna tarea monopolicé el uso de la CPU, previniendo cualquier desbordamiento de tiempo real.
+Para garantizar el determinismo y la estabilidad de un sistema en tiempo real basado en un ejecutor cíclico, se debe cumplir una restricción temporal fundamental: **la suma de los tiempos de ejecución en el peor de los casos (Total WCET) de todas las tareas debe ser estrictamente menor al período base del planificador.**
+
+1. **Período del Sistema:** El patrón de diseño *Update by Time Code* configurado en la aplicación define un período de **$1\text{ ms}$ ($1000\ \mu s$)**.
+2. **Cálculo del Total WCET:** Sumamos el tiempo de ejecución en el peor de los casos de las 4 tareas registradas en el arreglo:
+   $$Total\ WCET = 45\ \mu s + 166\ \mu s + 4\ \mu s + 78\ \mu s = 293\ \mu s$$
+3. **Evaluación de la Restricción:** 
+   $$293\ \mu s < 1000\ \mu s$$
+
+### Conclusión
+**El sistema cumple perfectamente con las restricciones temporales del ejecutor cíclico.** 
+
+El tiempo máximo que el procesador tarda en ejecutar todas las máquinas de estado (sensores, sistema, display, etc.) en su peor escenario es de $293\ \mu s$[cite: 20], lo que representa apenas el **29.3%** del tiempo disponible en cada ciclo de $1000\ \mu s$. 
+
+Esto deja un margen de seguridad de $707\ \mu s$ (70.7% del procesador libre), demostrando que la refactorización a máquinas de estado con acciones de entrada (Entry Actions) y formato de texto controlado mediante `snprintf` logró mantener un comportamiento genuinamente no bloqueante, incluso al manejar lógica de menús anidados.

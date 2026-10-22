@@ -223,6 +223,75 @@ void task_system_setup_statechart(void)
 {
     task_system_dta_t *p_task_system_dta = &task_system_dta_list[SETUP];
 
+
+    static task_system_st_t last_state = ST_SYS_ACTIVE;
+    static uint8_t last_motor_idx = 255;
+    static uint8_t last_param_idx = 255;
+    static uint8_t last_temp_val = 255;
+
+    const char* str_power[] = {"OFF", "ON "};
+    const char* str_spin_short[] = {"L ", "R "};
+    const char* str_spin_long[] = {"LEFT", "RIGHT"};
+    const char* str_param[] = {"Power", "Speed", "Spin"};
+    char display_buffer[24];
+
+
+    if (p_task_system_dta->state != last_state ||
+        menu_data.motor_idx != last_motor_idx ||
+        menu_data.param_idx != last_param_idx ||
+        menu_data.temp_val != last_temp_val)
+    {
+        last_state = p_task_system_dta->state;
+        last_motor_idx = menu_data.motor_idx;
+        last_param_idx = menu_data.param_idx;
+        last_temp_val = menu_data.temp_val;
+
+        switch (p_task_system_dta->state)
+        {
+            case ST_MAIN:
+                snprintf(display_buffer, sizeof(display_buffer), "M1:%-3s Spd:%-2d %-2s",
+                         str_power[menu_data.motores[0].power],
+                         menu_data.motores[0].speed,
+                         str_spin_short[menu_data.motores[0].spin]);
+                put_event_task_display(0, 0, display_buffer);
+
+                snprintf(display_buffer, sizeof(display_buffer), "M2:%-3s Spd:%-2d %-2s",
+                         str_power[menu_data.motores[1].power],
+                         menu_data.motores[1].speed,
+                         str_spin_short[menu_data.motores[1].spin]);
+                put_event_task_display(0, 1, display_buffer);
+                break;
+
+            case ST_MENU1:
+                put_event_task_display(0, 0, "Menu #1         ");
+                snprintf(display_buffer, sizeof(display_buffer), "> Motor %-8d", menu_data.motor_idx + 1); // 8 + 8 = 16
+                put_event_task_display(0, 1, display_buffer);
+                break;
+
+            case ST_MENU2:
+                put_event_task_display(0, 0, "Menu #2         ");
+                snprintf(display_buffer, sizeof(display_buffer), "> %-14s", str_param[menu_data.param_idx]); // 2 + 14 = 16
+                put_event_task_display(0, 1, display_buffer);
+                break;
+
+            case ST_MENU3:
+                put_event_task_display(0, 0, "Menu #3         ");
+                if (menu_data.param_idx == PARAM_POWER) {
+                    snprintf(display_buffer, sizeof(display_buffer), "> %-14s", str_power[menu_data.temp_val]);
+                } else if (menu_data.param_idx == PARAM_SPEED) {
+                    snprintf(display_buffer, sizeof(display_buffer), "> %-14d", menu_data.temp_val);
+                } else if (menu_data.param_idx == PARAM_SPIN) {
+                    snprintf(display_buffer, sizeof(display_buffer), "> %-14s", str_spin_long[menu_data.temp_val]);
+                }
+                put_event_task_display(0, 1, display_buffer);
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    // Procesamiento de Eventos
     if (true == any_event_task_system())
     {
         p_task_system_dta->flag = true;
@@ -236,6 +305,8 @@ void task_system_setup_statechart(void)
         if (p_task_system_dta->event == EV_SYS_BTN_A)
         {
             p_task_system_dta->state = ST_MAIN;
+            last_state = ST_SYS_ACTIVE;
+
             put_event_task_display(0, 0, "task_system_mode");
             put_event_task_display(0, 1, " NORMAL         ");
             task_system_set_mode(NORMAL);
