@@ -2,9 +2,9 @@
 
 Proyecto: `tdse-tp3_02-porting_c_code`
 
-| Placa | Modelo | N° de serie |
-|---|---|---|
-| NUCLEO-F103RB | `MB1136-XXXXYY-ZZ` | `A????????` |
+| Placa | N° de serie |
+|---|---|
+| NUCLEO-F103RB | `NUF103RB$KU1` |
 
 ## Objetivo
 
