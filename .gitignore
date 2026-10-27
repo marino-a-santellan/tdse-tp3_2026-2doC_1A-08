@@ -56,3 +56,4 @@ dkms.conf
 #  unanchored here because this repo holds one project per subfolder)
 Debug/
 *.launch
+Release/
